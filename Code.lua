@@ -1,7 +1,6 @@
 --[[
-    CLogger v2.3 - Mobile Optimized + Refresh All
-    created by: SofiAkira
-    Fixed for Delta Executor (pcall for viewport, weak rspy cooldowns)
+CLogger v2.3 – Delta Executor Safe
+created by: SofiAkira
 ]]
 
 -- [01] SERVICES
@@ -11,25 +10,54 @@ local LogService = game:GetService("LogService")
 local UserInputService = game:GetService("UserInputService")
 local LP = Players.LocalPlayer
 
--- [02] EXECUTOR DETECTION
-local isExec = false
-pcall(function() isExec = type(getgenv) == "function" end)
-
--- [03] RESPONSIVE SIZING (with safety)
-local function getViewport()
-    local ok, vp = pcall(function()
-        return workspace.CurrentCamera.ViewportSize
+-- [02] FALLBACKS
+local function safe_spawn(f)
+    pcall(function()
+        if spawn then spawn(f)
+        elseif coroutine then coroutine.wrap(f)()
+        else pcall(f) end
     end)
-    if ok and vp then return vp else return Vector2.new(800, 600) end
 end
-local vp = getViewport()
+
+local function safe_typeof(v)
+    if typeof then return typeof(v) end
+    local t = type(v)
+    if t == "userdata" then
+        if pcall(function() return v.ClassName end) then return "Instance" end
+        local s = tostring(v)
+        if s:find("Vector3") then return "Vector3"
+        elseif s:find("CFrame") then return "CFrame"
+        else return "userdata" end
+    end
+    return t
+end
+
+local function safe_tick()
+    if pcall(function() return tick() end) then return tick() end
+    return os.clock()
+end
+
+local function safe_osdate(fmt)
+    local ok, res = pcall(os.date, fmt)
+    if ok then return res else return "??:??:??" end
+end
+
+-- [03] RESPONSIVE SIZING
+local vp = Vector2.new(800, 600)
+pcall(function()
+    local cam = workspace.CurrentCamera
+    if cam then
+        local s = cam.ViewportSize
+        if s and type(s) == "Vector2" then vp = s end
+    end
+end)
 local PW = math.clamp(math.floor(vp.X * 0.92), 280, 540)
 local PH = math.clamp(math.floor(vp.Y * 0.85), 320, 500)
 local FSM = math.clamp(math.floor(PW / 48), 9, 13)
 local FLG = math.clamp(math.floor(PW / 28), 14, 20)
 local TAB_W = math.floor((PW - 28) / 4) - 3
 
--- [04] CLEANUP OLD INSTANCE
+-- [04] CLEANUP OLD
 pcall(function()
     local cg = game:GetService("CoreGui"):FindFirstChild("CLogger")
     if cg then cg:Destroy() end
@@ -49,50 +77,51 @@ Root.ResetOnSpawn = false
 Root.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 Root.IgnoreGuiInset = true
 Root.DisplayOrder = 999
-
-local guiOk = false
-if isExec then
-    guiOk = pcall(function()
-        Root.Parent = game:GetService("CoreGui")
-    end)
-end
-if not guiOk then
-    Root.Parent = LP:WaitForChild("PlayerGui", 10)
+pcall(function() Root.Parent = game:GetService("CoreGui") end)
+if not Root.Parent then
+    pcall(function() Root.Parent = LP:WaitForChild("PlayerGui", 10) end)
 end
 
--- ====== ENTRY LIMITS (mobile safety) ======
+-- ====== ENTRY LIMITS ======
 local MAX_CONSOLE_ENTRIES = 150
 local MAX_SCRIPT_ENTRIES  = 150
 local MAX_PLAYER_CARDS    = 50
 local MAX_RSPY_ENTRIES    = 80
 local RSPY_COOLDOWN       = 0.4
 
--- [06] HELPERS
+-- [06] HELPERS (all safe)
 local function mkCorner(p, r)
-    local c = Instance.new("UICorner", p)
-    c.CornerRadius = r or UDim.new(0, 7)
+    pcall(function()
+        local c = Instance.new("UICorner", p)
+        c.CornerRadius = r or UDim.new(0, 7)
+    end)
 end
 
 local function mkStroke(p, col, th)
-    local s = Instance.new("UIStroke", p)
-    s.Color = col or Color3.fromRGB(40, 120, 220)
-    s.Thickness = th or 1.5
-    return s
+    pcall(function()
+        local s = Instance.new("UIStroke", p)
+        s.Color = col or Color3.fromRGB(40, 120, 220)
+        s.Thickness = th or 1.5
+    end)
 end
 
 local function mkPad(p, l, r, t, b)
-    local u = Instance.new("UIPadding", p)
-    u.PaddingLeft = UDim.new(0, l or 0)
-    u.PaddingRight = UDim.new(0, r or 0)
-    u.PaddingTop = UDim.new(0, t or 0)
-    u.PaddingBottom = UDim.new(0, b or 0)
+    pcall(function()
+        local u = Instance.new("UIPadding", p)
+        u.PaddingLeft = UDim.new(0, l or 0)
+        u.PaddingRight = UDim.new(0, r or 0)
+        u.PaddingTop = UDim.new(0, t or 0)
+        u.PaddingBottom = UDim.new(0, b or 0)
+    end)
 end
 
 local function mkList(p, dir, sp)
-    local lay = Instance.new("UIListLayout", p)
-    lay.FillDirection = dir or Enum.FillDirection.Vertical
-    lay.SortOrder = Enum.SortOrder.LayoutOrder
-    lay.Padding = UDim.new(0, sp or 4)
+    pcall(function()
+        local lay = Instance.new("UIListLayout", p)
+        lay.FillDirection = dir or Enum.FillDirection.Vertical
+        lay.SortOrder = Enum.SortOrder.LayoutOrder
+        lay.Padding = UDim.new(0, sp or 4)
+    end)
 end
 
 local function mkLabel(p, props)
@@ -129,7 +158,7 @@ local function mkScroll(parent)
 end
 
 local function argStr(v)
-    local t = typeof(v)
+    local t = safe_typeof(v)
     if v == nil then return "nil"
     elseif t == "string" then
         local s = v:sub(1, 40)
@@ -182,13 +211,15 @@ Main.ClipsDescendants = true
 mkCorner(Main, UDim.new(0, 12))
 mkStroke(Main, Color3.fromRGB(32, 118, 255), 1.5)
 
-local grad = Instance.new("UIGradient", Main)
-grad.Rotation = 90
-grad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 30, 90)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(6, 18, 52)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(4, 12, 40)),
-})
+pcall(function()
+    local grad = Instance.new("UIGradient", Main)
+    grad.Rotation = 90
+    grad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 30, 90)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(6, 18, 52)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(4, 12, 40)),
+    })
+end)
 
 -- [09] HEADER
 local HH = math.clamp(math.floor(PH * 0.10), 40, 52)
@@ -221,7 +252,6 @@ mkLabel(Header, {
     ZIndex = 61,
 })
 
--- Refresh All button
 local RefreshBtn = mkBtn(Header, {
     Size = UDim2.new(0, 26, 0, 26),
     Position = UDim2.new(1, -66, 0.5, -13),
@@ -365,7 +395,7 @@ local function addLog(msg, msgType)
         mkLabel(hdr, {
             Size = UDim2.new(1, -40, 1, 0),
             Position = UDim2.new(0, 40, 0, 0),
-            Text = os.date("%H:%M:%S"),
+            Text = safe_osdate("%H:%M:%S"),
             TextColor3 = Color3.fromRGB(80, 128, 190),
             TextSize = FSM - 2,
             Font = Enum.Font.Code,
@@ -414,7 +444,7 @@ end)
 
 LogService.MessageOut:Connect(addLog)
 
-task.spawn(function()
+safe_spawn(function()
     pcall(function()
         local hist = LogService:GetLogHistory()
         if #hist > 0 then
@@ -521,7 +551,7 @@ local function performScriptScan()
     scriptEntries = {}
     sSeq = 0
     knownScripts = {}
-    task.spawn(function()
+    safe_spawn(function()
         pcall(function()
             for _, obj in ipairs(game:GetDescendants()) do
                 if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
@@ -530,7 +560,7 @@ local function performScriptScan()
             end
         end)
         pcall(function()
-            if isExec and type(getscripts) == "function" then
+            if type(getscripts) == "function" then
                 for _, s in ipairs(getscripts()) do addScriptEntry(s) end
             end
         end)
@@ -690,7 +720,6 @@ local rspySeq = 0
 local rspyOn = true
 local rspyConns = {}
 local rspyEntries = {}
--- FIX: weak keys to avoid memory leaks
 local rspyCooldowns = setmetatable({}, {__mode = "k"})
 
 local rspyRow = Instance.new("Frame", rspyPanel)
@@ -738,7 +767,7 @@ mkLabel(rspyPanel, {
 
 local function addRSpyEntry(remote, name, path, ...)
     if not rspyOn then return end
-    local now = tick()
+    local now = safe_tick()
     if rspyCooldowns[remote] and (now - rspyCooldowns[remote]) < RSPY_COOLDOWN then
         return
     end
@@ -762,7 +791,7 @@ local function addRSpyEntry(remote, name, path, ...)
 
         mkLabel(row, {
             Size = UDim2.new(1, 0, 0, 14),
-            Text = "[S->C] " .. name .. " " .. os.date("%H:%M:%S"),
+            Text = "[S->C] " .. name .. " " .. safe_osdate("%H:%M:%S"),
             TextColor3 = Color3.fromRGB(60, 200, 255),
             TextSize = FSM - 1,
             Font = Enum.Font.GothamBold,
@@ -904,4 +933,4 @@ end)
 
 -- [19] STARTUP
 switchTab("Console")
-print("[CLogger v2.3] Mobile-safe loaded " .. PW .. "x" .. PH .. " -- by SofiAkira")
+print("[CLogger v2.3] Delta-ready loaded " .. PW .. "x" .. PH .. " -- by SofiAkira")
